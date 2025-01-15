@@ -3,6 +3,11 @@ using ECommerceMVC.Data;
 using ECommerceMVC.ViewModels;
 using ECommerceMVC.Helpers;
 using AutoMapper;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 
 namespace ECommerceMVC.Controllers
 {
@@ -20,12 +25,8 @@ namespace ECommerceMVC.Controllers
             _mapper = mapper;
         }
 
-        // GET: HangHoa
-        public async Task<IActionResult> Index()
-        {
-
-            return View();
-        }
+        
+        #region Register
 
         [HttpGet]
         public async Task<IActionResult> DangKy()
@@ -63,6 +64,73 @@ namespace ECommerceMVC.Controllers
             }
 
             return View();
+        }
+
+        #endregion
+
+        #region Login
+        [HttpGet]
+        public async Task<IActionResult> DangNhap(string? ReturnUrl)
+        {
+            ViewBag.ReturnUrl = ReturnUrl;
+
+            return View();
+        }
+       [HttpPost]
+        public async Task<IActionResult> DangNhap(LoginVM model, string? ReturnUrl)
+        {
+            ViewBag.ReturnUrl = ReturnUrl;
+
+            if(ModelState.IsValid) {
+                var data = db.KhachHangs
+                .SingleOrDefault(p => p.MaKh == model.MaKh);
+
+                if(data == null) {
+                    ModelState.AddModelError("Loi", "Sai thong tin dang nhap");
+                } else {
+                    if(!data.HieuLuc) {
+                        ModelState.AddModelError("Loi", "Tai khoan bi khoa. Vui long lien he admin");
+                    } else {
+                        if(data.MatKhau != model.MatKhau.ToMd5Hash(data.RandomKey)) {
+                            ModelState.AddModelError("Loi", "Sai thong tin dang nhap");
+                        } else {
+                            var claims =  new List<Claim> {
+                                new Claim(ClaimTypes.Email, data.Email),
+                                new Claim(ClaimTypes.Name, data.HoTen),
+                                new Claim("CustomerID", data.MaKh),
+                                new Claim(ClaimTypes.Role, "Customer")
+                            };
+
+                            var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                            var claimsPricipal = new ClaimsPrincipal(claimsIdentity);
+
+                            await HttpContext.SignInAsync(claimsPricipal);
+
+                            if(Url.IsLocalUrl(ReturnUrl)) {
+                                return Redirect(ReturnUrl);
+                            } else {
+                                return Redirect("/");
+                            }
+                        }
+                    }
+                }
+            }
+
+            return View();
+        }
+
+        #endregion
+
+        [Authorize]
+        public IActionResult Profile() {
+            return View();
+        }
+
+        [Authorize]
+        public async Task<IActionResult> DangXuat() {
+            await HttpContext.SignOutAsync();
+
+            return Redirect("/");
         }
 
         
